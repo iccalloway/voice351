@@ -11,17 +11,19 @@ To do:
 import os, string, scipy.io.wavfile, re, pickle, python_speech_features
 from numpy import zeros, array, reshape
 from keras.models import Sequential, load_model
-from keras.layers import LSTM, Dense, Dropout, Bidirectional, TimeDistributed
+from keras.layers import LSTM, Dense, Dropout, Bidirectional, TimeDistributed, Activation
 from keras.preprocessing import sequence
 from keras.engine.topology import Merge
 from keras.optimizers import RMSprop
 from keras.utils.np_utils import to_categorical
 from functools import partial, update_wrapper
+from math import sqrt, pow
 import keras.backend as K
 
 #Variables
 window_length = 0.06
 step = 0.03
+batch_size = 30
 coefficients = 13
 output = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\Test\\"
 
@@ -102,16 +104,16 @@ def read_in_features(path, sound, segdict, transcription=None, output_sound=Fals
             ##Window up to (but not beyond) the end of the segment
             windowed_sound = wav_array[int(sampling_rate*float(transcription[trindex][0])): \
             int(sampling_rate*float(transcription[trindex+1][0]))]
-            
-            features_list= features_list+[(item, transcription[trindex][2]) for \
-            item in python_speech_features.mfcc(windowed_sound, samplerate=sampling_rate, \
-            winlen=window_length, winstep=step)] ## <- MFCCs
+            if len(windowed_sound) > 0:
+                features_list= features_list+[(item, transcription[trindex][2]) for \
+                item in python_speech_features.mfcc(windowed_sound, samplerate=sampling_rate, \
+                winlen=window_length, winstep=step)] ## <- MFCCs
         
         trindex+=1 
-        if int(sampling_rate*float(transcription[trindex][0])) < len(wav_array):
-            windowed_sound = wav_array[int(sampling_rate*float(transcription[trindex][0]))-1:len(wav_array)]
+        windowed_sound = wav_array[int(sampling_rate*float(transcription[trindex][0]))-1:len(wav_array)]
         ##Get relevant features from windowed audio
         ##fft_list.append((abs(numpy.fft.fft(windowed_sound, n=num_ticks)), transcription[trindex][2])) <- Naive FFT
+        if len(windowed_sound) > 0:
             features_list= features_list+[(item, transcription[trindex][2]) for item in python_speech_features.mfcc(windowed_sound, samplerate=sampling_rate, \
             winlen=window_length, winstep=step)] ## <- MFCCs
         ##Returns [...,(DFT, transcription at this point),...]
@@ -131,16 +133,9 @@ def read_in_features(path, sound, segdict, transcription=None, output_sound=Fals
 def w_categorical_crossentropy(y_true, y_pred, weights):
     
     differences = K.abs(y_pred - y_true)
-    weightings = K.repeat(K.reshape(variable(weights), (1, len(weights))), 1000)
-    final_mask = K.sum(differences * weightings, axis=1)
+    weightings = K.repeat(K.reshape(K.variable(array(weights)), (1,len(weights))), batch_size)
+    final_mask = K.sum(differences, axis=2)#K.sum(differences * weightings, axis=2)
     
-    """
-    final_mask = K.zeros_like(y_pred[:, 0])
-    y_pred_max = K.max(y_pred, axis=1)
-    for a in range(len(weights)):
-        final_mask += 
-        ##final_mask += (sum([weights[b]*abs(y_pred[a][b]-y_true[a][b]) for b in range(len(weights))])) <- Crashes from recursion
-    """ 
     return K.categorical_crossentropy(y_pred, y_true) * final_mask
         
 
@@ -151,8 +146,7 @@ if __name__ == "__main__":
     freq_dict = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\\frequency_dict.pkl"
     modelpath = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\\SpeechRecognitionModel.h5"
     ##segdict = open_segdict(segment_dict)
-    hidden_units = 70
-    batch_size = 1000
+    ##hidden_units = 70
     files = get_files(trainpath)
     
     ##Build and save dictionaries that store segment identities and frequencies
@@ -169,32 +163,27 @@ if __name__ == "__main__":
     
     ##Create weighted penalties to discourage preference for common segments (e.g. /t/)
     normalizing_factor = float(freq_sum)/min(freqdict.values())
-    weighted_penalties=[0]+[float(item[1])/(freq_sum+1) for item in sorted(freqdict.items())]
+    weighted_penalties=[float(item[1])/(freq_sum+1) for item in sorted(freqdict.items())]
     ncce = partial(w_categorical_crossentropy, weights=weighted_penalties)
     update_wrapper(ncce, w_categorical_crossentropy)
-    
-    weightings = K.repeat(K.variable(weighted_penalties).reshape(1,len(weighted_penalties)), 1000)
-    print weighted_penalties
-    print K.variable(weighted_penalties)
-    print(weightings)
-    exit()
-    
+      
     ##Initialize Model
     model = Sequential()
     
     model.add(Bidirectional(LSTM(output_dim=len(segdict), init='uniform', \
      inner_init='uniform',forget_bias_init='one', return_sequences=True, activation='tanh', \
      inner_activation='sigmoid',), merge_mode='sum', input_shape = (batch_size,coefficients)))
-     
     model.add(Dropout(0.3))
     model.add(TimeDistributed(Dense(len(segdict), activation='sigmoid')))
-    ##model.add(Activation('softmax'))
+    model.add(Dropout(0.2))
+    model.add(TimeDistributed(Dense(len(segdict), activation='sigmoid')))
+    model.add(Activation('softmax'))
     
     rms = RMSprop()
     
     model.compile(loss=ncce,
-        optimizer="SGD",
-        metrics=['fbeta_score'])
+        optimizer=rms,
+        metrics=["categorical_crossentropy"])
 
         
     ##model = load_model(modelpath)
@@ -215,7 +204,7 @@ if __name__ == "__main__":
         Y_train = array([Y_train_values[x:x+batch_size] for x in range(0, len(Y_train_values), batch_size)])
         Y_train = sequence.pad_sequences(Y_train, maxlen=batch_size)
         
-        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=1, validation_split=0.2, verbose=1)
+        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=2, validation_split=0.2, verbose=1)
         
         ##Get Predictions
         predictions = model.predict(X_train, batch_size=1)
