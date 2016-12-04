@@ -63,14 +63,17 @@ def read_in_transcription(path, phon_file, segdict):
             transcription = [segment.split() for segment in f.readlines()[9:]]
             for b in range(len(transcription)):
                 ##Exclude non-speech sounds
-                if (transcription[b][1] != "121") | \
-                 (transcription[b][2] != "VOCNOISE") | \
-                 (transcription[b][2] != "SIL"): 
-                    if transcription[b][2] not in segdict:
-                        segdict[transcription[b][2]]= 0
-                    transcription[b][2]=segdict[transcription[b][2]]
+                if len(transcription[b])<3:
+                    print transcription[b]
                 else:
-                    transcription[b][2]=0
+                    if (transcription[b][1] != "121") | \
+                    (transcription[b][2] != "VOCNOISE") | \
+                    (transcription[b][2] != "SIL"): 
+                        if transcription[b][2] not in segdict:
+                            segdict[transcription[b][2]]= 0
+                        transcription[b][2]=segdict[transcription[b][2]]
+                    else:
+                        transcription[b][2]=0
         ##Returns (start time, classification [121/2], transcription_index)
         return transcription
     else:
@@ -85,14 +88,17 @@ def get_important_info(path, phon_file, segdict, freq_dict, tuple_dict):
             transcription = [segment.split() for segment in f.readlines()[9:]]
             numbers = []
             for b in range(len(transcription)):
-                    if transcription[b][2] not in segdict:
-                        segdict[transcription[b][2]]= a
-                        a+=1
-                    transcription[b][2]=segdict[transcription[b][2]]
-                    numbers.append(transcription[b][2])
-                    if transcription[b][2] not in freq_dict:
-                        freq_dict[transcription[b][2]]=0
-                    freq_dict[transcription[b][2]]+=1
+                    if len(transcription[b]) <3:
+                        print transcription[b]
+                    else:
+                        if transcription[b][2] not in segdict:
+                            segdict[transcription[b][2]]= a
+                            a+=1
+                        transcription[b][2]=segdict[transcription[b][2]]
+                        numbers.append(transcription[b][2])
+                        if transcription[b][2] not in freq_dict:
+                            freq_dict[transcription[b][2]]=0
+                        freq_dict[transcription[b][2]]+=1
             number_tuple=[numbers[tuple_size*c:(c+1)*(tuple_size)] for c in range(len(numbers)/tuple_size)]
             for item in number_tuple:
                 if item[-1] not in tuple_dict:
@@ -154,8 +160,8 @@ def w_categorical_crossentropy(y_true, y_pred, weights):
 """        
 
 if __name__ == "__main__":    
-    trainpath = "./data/"
-    testpath = "./data/"
+    trainpath = "F:\\Buckeyes\\"
+    testpath = "F:\\Buckeyes\\"
     segment_dict = "./segment_dict.pkl"
     freq_dict = "./frequency_dict.pkl"
     modelpath = "./SpeechRecognitionModel.h5"
@@ -174,7 +180,7 @@ if __name__ == "__main__":
         segdict, freqdict, tupledict  = get_important_info(trainpath, file[1], segdict, freqdict, tupledict)
      
     print tupledict
-    balance_number = min(tupledict.values())*9
+    balance_number = 30
     
     
     ###If we can only load one file at a time...
