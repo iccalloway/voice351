@@ -1,9 +1,6 @@
 """
 To do:
-    -Deal w/ Unbalanced Categories
-    -Improve F-Score
-    -Customized Loss Function
-    -Memory Issue?
+    -Randomized Undersampling each round?
 """
 
 
@@ -18,13 +15,16 @@ from keras.optimizers import RMSprop
 from keras.utils.np_utils import to_categorical
 from functools import partial, update_wrapper
 from math import sqrt, pow
+from random import sample, randint
 import keras.backend as K
+import itertools
 
 #Variables
 window_length = 0.06
 step = 0.03
 batch_size = 30
 coefficients = 13
+tuple_size = 4
 output = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\Test\\"
 
 
@@ -62,9 +62,15 @@ def read_in_transcription(path, phon_file, segdict):
         with open(path+phon_file, "r") as f:
             transcription = [segment.split() for segment in f.readlines()[9:]]
             for b in range(len(transcription)):
+                ##Exclude non-speech sounds
+                if (transcription[b][1] != "121") | \
+                 (transcription[b][2] != "VOCNOISE") | \
+                 (transcription[b][2] != "SIL"): 
                     if transcription[b][2] not in segdict:
                         segdict[transcription[b][2]]= 0
                     transcription[b][2]=segdict[transcription[b][2]]
+                else:
+                    transcription[b][2]=0
         ##Returns (start time, classification [121/2], transcription_index)
         return transcription
     else:
@@ -72,21 +78,29 @@ def read_in_transcription(path, phon_file, segdict):
         
         
 ##Prepares 
-def get_important_info(path, phon_file, segdict, freq_dict):
+def get_important_info(path, phon_file, segdict, freq_dict, tuple_dict):
     a =  len(segdict)+1
     if phon_file != None:
         with open(path+phon_file, "r") as f:
             transcription = [segment.split() for segment in f.readlines()[9:]]
+            numbers = []
             for b in range(len(transcription)):
                     if transcription[b][2] not in segdict:
                         segdict[transcription[b][2]]= a
                         a+=1
                     transcription[b][2]=segdict[transcription[b][2]]
+                    numbers.append(transcription[b][2])
                     if transcription[b][2] not in freq_dict:
                         freq_dict[transcription[b][2]]=0
                     freq_dict[transcription[b][2]]+=1
+            number_tuple=[numbers[tuple_size*c:(c+1)*(tuple_size)] for c in range(len(numbers)/tuple_size)]
+            for item in number_tuple:
+                if item[-1] not in tuple_dict:
+                    tuple_dict[item[-1]]=0
+                tuple_dict[item[-1]]+=1
+                    
         ##Returns (start time, classification [121/2], transcription_index)
-        return segdict, freq_dict
+        return segdict, freq_dict, tuple_dict
     else:
         return None
         
@@ -129,7 +143,7 @@ def read_in_features(path, sound, segdict, transcription=None, output_sound=Fals
         return features_list
 
         
-
+"""
 def w_categorical_crossentropy(y_true, y_pred, weights):
     
     differences = K.abs(y_pred - y_true)
@@ -137,14 +151,14 @@ def w_categorical_crossentropy(y_true, y_pred, weights):
     final_mask = K.sum(differences, axis=2)#K.sum(differences * weightings, axis=2)
     
     return K.categorical_crossentropy(y_pred, y_true) * final_mask
-        
+"""        
 
 if __name__ == "__main__":    
-    trainpath = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\\data\\"
-    testpath = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\\data\\"
-    segment_dict = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\\segment_dict.pkl"
-    freq_dict = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\\frequency_dict.pkl"
-    modelpath = "C:\\Users\\Ian\\Academic Stuff\\Projects\\Speech Recognition\\SpeechRecognitionModel.h5"
+    trainpath = "./data/"
+    testpath = "./data/"
+    segment_dict = "./segment_dict.pkl"
+    freq_dict = "./frequency_dict.pkl"
+    modelpath = "./SpeechRecognitionModel.h5"
     ##segdict = open_segdict(segment_dict)
     ##hidden_units = 70
     files = get_files(trainpath)
@@ -152,20 +166,44 @@ if __name__ == "__main__":
     ##Build and save dictionaries that store segment identities and frequencies
     segdict = {}
     freqdict = {}
+    tupledict = {}
+    
+    fft= []
    
     for file in files:
-        segdict, freqdict  = get_important_info(trainpath, file[1], segdict, freqdict)
+        segdict, freqdict, tupledict  = get_important_info(trainpath, file[1], segdict, freqdict, tupledict)
+     
+    print tupledict
+    balance_number = min(tupledict.values())*9
     
+    
+    ###If we can only load one file at a time...
+    for file in files:
+        transcription = read_in_transcription(trainpath, file[1], segdict)
+        fft = read_in_features(trainpath, file[0], segdict, transcription)
+        slices = [fft[a*tuple_size:(a+1)*(tuple_size)] for a in range(len(fft)/tuple_size)]
+        final_array = [[] for a in range(len(segdict))]
+        for slice in slices:
+            possibility = randint(0,balance_number)
+            if slice[-1][-1] < len(final_array):
+                if len(final_array[slice[-1][-1]]) < possibility:
+                    final_array[slice[-1][-1]].append(slice)
+            else:
+                print slice[-1]
+    model_input = []
+    for bucket in final_array:
+        model_input= model_input+[val for sublist in bucket for val in sublist]
+    model_input = array(model_input)
     save_dict(segdict, segment_dict)
     save_dict(freqdict, freq_dict)
     
-    freq_sum = sum(freqdict.values())
+    ##freq_sum = sum(freqdict.values())
     
     ##Create weighted penalties to discourage preference for common segments (e.g. /t/)
-    normalizing_factor = float(freq_sum)/min(freqdict.values())
-    weighted_penalties=[float(item[1])/(freq_sum+1) for item in sorted(freqdict.items())]
-    ncce = partial(w_categorical_crossentropy, weights=weighted_penalties)
-    update_wrapper(ncce, w_categorical_crossentropy)
+    ##normalizing_factor = float(freq_sum)/min(freqdict.values())
+    ##weighted_penalties=[float(item[1])/(freq_sum+1) for item in sorted(freqdict.items())]
+    ##ncce = partial(w_categorical_crossentropy, weights=weighted_penalties)
+    ##update_wrapper(ncce, w_categorical_crossentropy)
       
     ##Initialize Model
     model = Sequential()
@@ -181,7 +219,7 @@ if __name__ == "__main__":
     
     rms = RMSprop()
     
-    model.compile(loss=ncce,
+    model.compile(loss="categorical_crossentropy",
         optimizer=rms,
         metrics=["categorical_crossentropy"])
 
@@ -192,19 +230,21 @@ if __name__ == "__main__":
 
     ##Train Model
     for file in files:
-        transcription = read_in_transcription(trainpath, file[1], segdict)
-        fft = read_in_features(trainpath, file[0], segdict, transcription)
-        X_train = array([array(item[0]) for item in fft])
+        ##transcription = read_in_transcription(trainpath, file[1], segdict)
+        ##fft = read_in_features(trainpath, file[0], segdict, transcription)       
+            
+        
+        X_train = array([array(item[0]) for item in model_input])
         X_train = array(array([X_train[x:x+batch_size] for x in range(0, len(X_train), batch_size)]))
         X_train = sequence.pad_sequences(X_train, maxlen=batch_size)
         X_train = reshape(X_train, (len(X_train), len(X_train[0]), len(X_train[0][0])))
         #print fft
-        Y_train_values = [[1 if i == item[1] else e for i, e in enumerate(zeros(len(segdict)))] for item in fft]
+        Y_train_values = [[1 if i == item[1] else e for i, e in enumerate(zeros(len(segdict)))] for item in model_input]
         #print Y_train_values
         Y_train = array([Y_train_values[x:x+batch_size] for x in range(0, len(Y_train_values), batch_size)])
         Y_train = sequence.pad_sequences(Y_train, maxlen=batch_size)
         
-        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=2, validation_split=0.2, verbose=1)
+        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=100, validation_split=0.2, verbose=1)
         
         ##Get Predictions
         predictions = model.predict(X_train, batch_size=1)
