@@ -17,7 +17,7 @@ from functools import partial, update_wrapper
 from math import sqrt, pow
 from random import sample, randint
 import keras.backend as K
-import itertools
+from collections import deque
 
 #Variables
 window_length = 0.06
@@ -66,8 +66,9 @@ def read_in_transcription(path, phon_file, segdict):
                 if len(transcription[b])<3:
                     print transcription[b]
                 else:
-                    if (transcription[b][1] != "121") | \
-                    (transcription[b][2] != "VOCNOISE") | \
+                    if (transcription[b][1] != "121") and \
+                    (transcription[b][2] != "VOCNOISE") and \
+                    (transcription[b][2] != "IVER") and \
                     (transcription[b][2] != "SIL"): 
                         if transcription[b][2] not in segdict:
                             segdict[transcription[b][2]]= 0
@@ -124,7 +125,7 @@ def read_in_features(path, sound, segdict, transcription=None, output_sound=Fals
             ##Window up to (but not beyond) the end of the segment
             windowed_sound = wav_array[int(sampling_rate*float(transcription[trindex][0])): \
             int(sampling_rate*float(transcription[trindex+1][0]))]
-            if len(windowed_sound) > 0:
+            if len(windowed_sound)>0 and len(transcription[trindex])>2:
                 features_list= features_list+[(item, transcription[trindex][2]) for \
                 item in python_speech_features.mfcc(windowed_sound, samplerate=sampling_rate, \
                 winlen=window_length, winstep=step)] ## <- MFCCs
@@ -179,10 +180,9 @@ if __name__ == "__main__":
     for file in files:
         segdict, freqdict, tupledict  = get_important_info(trainpath, file[1], segdict, freqdict, tupledict)
      
-    print tupledict
-    balance_number = 30
+    balance_number = 10
     
-    
+    """
     ###If we can only load one file at a time...
     for file in files:
         transcription = read_in_transcription(trainpath, file[1], segdict)
@@ -200,6 +200,7 @@ if __name__ == "__main__":
     for bucket in final_array:
         model_input= model_input+[val for sublist in bucket for val in sublist]
     model_input = array(model_input)
+    """
     save_dict(segdict, segment_dict)
     save_dict(freqdict, freq_dict)
     
@@ -227,17 +228,39 @@ if __name__ == "__main__":
     
     model.compile(loss="categorical_crossentropy",
         optimizer=rms,
-        metrics=["categorical_crossentropy"])
+        metrics=["accuracy"])
 
         
     ##model = load_model(modelpath)
-    
+    files = deque(files)
     model.summary()
+    transcription_list = []
+    fft_list = []
+    for file in files:
+        transcription_list.append(read_in_transcription(trainpath, file[1], segdict))
+        fft_list.append(read_in_features(trainpath, file[0], segdict, transcription_list[-1]))
+    index = deque(range(len(transcription_list)))
 
     ##Train Model
-    for file in files:
+    for a in range(len(index)):
         ##transcription = read_in_transcription(trainpath, file[1], segdict)
         ##fft = read_in_features(trainpath, file[0], segdict, transcription)       
+        ###If we can only load one file at a time...
+        index.rotate(-1)
+        final_array = [[] for a in range(len(segdict))]
+        for i in index:
+            slices = [fft_list[i][a*tuple_size:(a+1)*(tuple_size)] for a in range(len(fft_list[i])/tuple_size)]
+            for slice in slices:
+                possibility = randint(0,balance_number)
+                if slice[-1][-1] < len(final_array):
+                    if len(final_array[slice[-1][-1]]) < possibility:
+                        final_array[slice[-1][-1]].append(slice)
+                else:
+                    print "Weird slice"
+
+        model_input = []
+        for bucket in final_array:
+            model_input= model_input+[val for sublist in bucket for val in sublist] 
             
         
         X_train = array([array(item[0]) for item in model_input])
@@ -250,7 +273,7 @@ if __name__ == "__main__":
         Y_train = array([Y_train_values[x:x+batch_size] for x in range(0, len(Y_train_values), batch_size)])
         Y_train = sequence.pad_sequences(Y_train, maxlen=batch_size)
         
-        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=100, validation_split=0.2, verbose=1)
+        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=20, validation_split=0.2, verbose=1)
         
         ##Get Predictions
         predictions = model.predict(X_train, batch_size=1)
