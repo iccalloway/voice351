@@ -133,7 +133,6 @@ def read_in_features(path, sound, segdict, transcription=None, output_sound=Fals
         trindex+=1 
         windowed_sound = wav_array[int(sampling_rate*float(transcription[trindex][0]))-1:len(wav_array)]
         ##Get relevant features from windowed audio
-        ##fft_list.append((abs(numpy.fft.fft(windowed_sound, n=num_ticks)), transcription[trindex][2])) <- Naive FFT
         if len(windowed_sound) > 0:
             features_list= features_list+[(item, transcription[trindex][2]) for item in python_speech_features.mfcc(windowed_sound, samplerate=sampling_rate, \
             winlen=window_length, winstep=step)] ## <- MFCCs
@@ -142,23 +141,11 @@ def read_in_features(path, sound, segdict, transcription=None, output_sound=Fals
     ##If not, just include features on their own
     else:
         ##Get relevant fetaures from windowed audio
-        ##feature_list.append((abs(numpy.fft.fft(windowed_sound, n=num_ticks)), None)) <- Naive FFT
         features_list = [(item, None) for item in \
         python_speech_features.mfcc(windowed_sound, samplerate=sampling_rate, \
         winlen=window_length, winstep=step)] ## <- MFCCs        
         ##Returns [...,(DFT, None),...]
         return features_list
-
-        
-"""
-def w_categorical_crossentropy(y_true, y_pred, weights):
-    
-    differences = K.abs(y_pred - y_true)
-    weightings = K.repeat(K.reshape(K.variable(array(weights)), (1,len(weights))), batch_size)
-    final_mask = K.sum(differences, axis=2)#K.sum(differences * weightings, axis=2)
-    
-    return K.categorical_crossentropy(y_pred, y_true) * final_mask
-"""        
 
 if __name__ == "__main__":    
     trainpath = "F:\\Buckeyes\\"
@@ -166,8 +153,8 @@ if __name__ == "__main__":
     segment_dict = "./segment_dict.pkl"
     freq_dict = "./frequency_dict.pkl"
     modelpath = "./SpeechRecognitionModel.h5"
-    ##segdict = open_segdict(segment_dict)
-    ##hidden_units = 70
+
+    
     files = get_files(trainpath)
     
     ##Build and save dictionaries that store segment identities and frequencies
@@ -201,16 +188,10 @@ if __name__ == "__main__":
         model_input= model_input+[val for sublist in bucket for val in sublist]
     model_input = array(model_input)
     """
+    
+    
     save_dict(segdict, segment_dict)
     save_dict(freqdict, freq_dict)
-    
-    ##freq_sum = sum(freqdict.values())
-    
-    ##Create weighted penalties to discourage preference for common segments (e.g. /t/)
-    ##normalizing_factor = float(freq_sum)/min(freqdict.values())
-    ##weighted_penalties=[float(item[1])/(freq_sum+1) for item in sorted(freqdict.items())]
-    ##ncce = partial(w_categorical_crossentropy, weights=weighted_penalties)
-    ##update_wrapper(ncce, w_categorical_crossentropy)
       
     ##Initialize Model
     model = Sequential()
@@ -242,9 +223,7 @@ if __name__ == "__main__":
     index = deque(range(len(transcription_list)))
 
     ##Train Model
-    for a in range(len(index)):
-        ##transcription = read_in_transcription(trainpath, file[1], segdict)
-        ##fft = read_in_features(trainpath, file[0], segdict, transcription)       
+    for a in range(len(index)):     
         ###If we can only load one file at a time...
         index.rotate(-1)
         final_array = [[] for a in range(len(segdict))]
@@ -289,32 +268,3 @@ if __name__ == "__main__":
                     predicted_output.append(0)
         print predicted_output   
     model.save("./SpeechRecognitionModel.h5")
-    """
-    
-    ##Model Predictions
-    for file in files:
-        fft = read_in_fft(testpath, file[0])
-        X_test = numpy.array([numpy.array(item[0]) for item in fft])
-        X_test = numpy.array(numpy.array([X_test[x:x+batch_size] for x in range(0, len(X_test), batch_size)]))
-        X_test = sequence.pad_sequences(X_test, maxlen=batch_size)
-        X_test = numpy.reshape(X_test, (len(X_test), len(X_test[0]), len(X_test[0][0])))
-        Y_test_values = [[1 if i == item[1] else e for i, e in enumerate(numpy.zeros(len(segdict)))] for item in fft]
-        Y_test = numpy.array([Y_test_values[x:x+batch_size] for x in range(0, len(Y_test_values), batch_size)])
-        Y_test = sequence.pad_sequences(Y_test, maxlen=batch_size)
-        Y_test = numpy.reshape(Y_test, (len(Y_test), len(Y_test[0]), len(Y_test[0][0])))
-                
-        ##Get Predictions
-        predictions = model.predict(X_test, batch_size=1)
-        sorted_dict = sorted(segdict.items(), key=lambda x:x[1])
-        predicted_output=[]
-        for item in predictions:
-            for segment in item:
-                segment_list = list(segment)
-                max_index = segment_list.index(max(segment_list))
-                if max_index != 0:
-                    predicted_output.append(sorted_dict[max_index-1][0])
-                else:
-                    predicted_output.append(0)
-        print predicted_output
-        time.sleep(5)
-    """
