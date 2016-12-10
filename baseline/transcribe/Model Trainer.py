@@ -39,7 +39,8 @@ def get_files(path):
             file_list[a] = (file_list[a], None)
     ##Returns (wav file, phones file/None)
     return file_list
-    
+
+##Opens pickle file as dictionary    
 def open_dict(input):
     try:
         with open(input, "rb") as f:
@@ -50,13 +51,14 @@ def open_dict(input):
         segdict = {}
     return segdict
 
+##Saves dictionary as pickle file
 def save_dict(dictionary, output):
     with open(output, "wb") as f:
         pickle.dump(dictionary, f)
     print "Saved dictionary to "+output+"."
     return
     
-##Returns processed phones file
+##Reads .phones file and returns a transcription list  
 def read_in_transcription(path, phon_file, segdict):
     if phon_file != None:
         with open(path+phon_file, "r") as f:
@@ -81,7 +83,10 @@ def read_in_transcription(path, phon_file, segdict):
         return None
         
         
-##Prepares 
+##Reads transcription list and returns dictionaries useful for later on
+##segdict: assigns unique numbers to segment classes
+##freq_dict: counts frequency of each segments
+##tuple_dict: counts frequency of frame n-tuples ending in a given segment
 def get_important_info(path, phon_file, segdict, freq_dict, tuple_dict):
     a =  len(segdict)+1
     if phon_file != None:
@@ -167,7 +172,7 @@ if __name__ == "__main__":
     for file in files:
         segdict, freqdict, tupledict  = get_important_info(trainpath, file[1], segdict, freqdict, tupledict)
      
-    balance_number = 10
+    balance_number = 30
     
     """
     ###If we can only load one file at a time...
@@ -227,13 +232,14 @@ if __name__ == "__main__":
 
         
     ##model = load_model(modelpath)
-    files = deque(files)
     model.summary()
+    
     transcription_list = []
     fft_list = []
     
     bucket_list  = [[] for a in len(segdict)]
 
+    ##          
     for file in files:
         transcription_list.append(read_in_transcription(trainpath, file[1], segdict))
         features = read_in_features(trainpath, file[0], segdict, transcription_list[-1])
