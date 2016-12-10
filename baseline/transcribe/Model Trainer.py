@@ -15,7 +15,7 @@ from keras.optimizers import RMSprop
 from keras.utils.np_utils import to_categorical
 from functools import partial, update_wrapper
 from math import sqrt, pow
-from random import sample, randint
+from random import sample, randint, choice, shuffle
 import keras.backend as K
 from collections import deque
 
