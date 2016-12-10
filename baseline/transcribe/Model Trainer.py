@@ -1,6 +1,6 @@
 """
 To do:
-    -Randomized Undersampling each round?
+    -Undersampling and oversampling
 """
 
 
@@ -196,6 +196,9 @@ if __name__ == "__main__":
     ##Initialize Model
     model = Sequential()
     
+    
+    ## With RNN
+    """
     model.add(Bidirectional(LSTM(output_dim=len(segdict), init='uniform', \
      inner_init='uniform',forget_bias_init='one', return_sequences=True, activation='tanh', \
      inner_activation='sigmoid',), merge_mode='sum', input_shape = (batch_size,coefficients)))
@@ -204,6 +207,17 @@ if __name__ == "__main__":
     model.add(Dropout(0.2))
     model.add(TimeDistributed(Dense(len(segdict), activation='sigmoid')))
     model.add(Activation('softmax'))
+    """
+    
+    
+    ##With plain NN
+    model.add(Dense(output_dim=len(segdict), input_shape = (batch_size, coeffcients))
+    model.add(Dropout(0.3))
+    model.add(Dense(len(segdict))
+    model.add(Dropout(0.2))
+    model.add(Dense(len(segidct))
+    model.add(Activation('softmax'))
+              
     
     rms = RMSprop()
     
@@ -217,28 +231,28 @@ if __name__ == "__main__":
     model.summary()
     transcription_list = []
     fft_list = []
+    
+    bucket_list  = [[] for a in len(segdict)]
+
     for file in files:
         transcription_list.append(read_in_transcription(trainpath, file[1], segdict))
-        fft_list.append(read_in_features(trainpath, file[0], segdict, transcription_list[-1]))
+        features = read_in_features(trainpath, file[0], segdict, transcription_list[-1])
+        slices = [features[a*tuple_size:(a+1)*(tuple_size)] for a in range(len(features)/tuple_size)]
+        for slice in slices:
+            bucket_list[slice[-1][-1]].append(slice)
     index = deque(range(len(transcription_list)))
 
     ##Train Model
-    for a in range(len(index)):     
-        ###If we can only load one file at a time...
+    for a in range(20):     
         index.rotate(-1)
-        final_array = [[] for a in range(len(segdict))]
-        for i in index:
-            slices = [fft_list[i][a*tuple_size:(a+1)*(tuple_size)] for a in range(len(fft_list[i])/tuple_size)]
-            for slice in slices:
-                possibility = randint(0,balance_number)
-                if slice[-1][-1] < len(final_array):
-                    if len(final_array[slice[-1][-1]]) < possibility:
-                        final_array[slice[-1][-1]].append(slice)
-                else:
-                    print "Weird slice"
+        selected_sices = []
+        for b in range(len(segdict)):
+            selected_slices = selected_slices.append([choice(bucket_list[b]) for c in range(balance_number)])
+        
+        shuffle(selected_slices)
 
         model_input = []
-        for bucket in final_array:
+        for bucket in selected_slices:
             model_input= model_input+[val for sublist in bucket for val in sublist] 
             
         
@@ -246,9 +260,9 @@ if __name__ == "__main__":
         X_train = array(array([X_train[x:x+batch_size] for x in range(0, len(X_train), batch_size)]))
         X_train = sequence.pad_sequences(X_train, maxlen=batch_size)
         X_train = reshape(X_train, (len(X_train), len(X_train[0]), len(X_train[0][0])))
-        #print fft
+
         Y_train_values = [[1 if i == item[1] else e for i, e in enumerate(zeros(len(segdict)))] for item in model_input]
-        #print Y_train_values
+
         Y_train = array([Y_train_values[x:x+batch_size] for x in range(0, len(Y_train_values), batch_size)])
         Y_train = sequence.pad_sequences(Y_train, maxlen=batch_size)
         
