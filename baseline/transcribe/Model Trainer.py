@@ -16,6 +16,7 @@ from keras.utils.np_utils import to_categorical
 from functools import partial, update_wrapper
 from math import sqrt, pow
 from random import sample, randint, choice, shuffle
+from scklearn.metrics import confusion_matrix
 import keras.backend as K
 from collections import deque
 
@@ -274,8 +275,14 @@ if __name__ == "__main__":
         
         hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=20, validation_split=0.2, verbose=1)
         
-        ##Get Predictions
+              
+        current_matrix = confusion_matrix(Y)     
+              
+        
+        ##Generate Confusion Matrix at end of each training step
         predictions = model.predict(X_train, batch_size=1)
+        cmatrix = confusion_matrix(predictions, Y_train)
+        """     
         sorted_dict = sorted(segdict.items(), key=lambda x:x[1])
         predicted_output=[]
         for item in predictions:
@@ -286,5 +293,7 @@ if __name__ == "__main__":
                     predicted_output.append(sorted_dict[max_index-1][0])
                 else:
                     predicted_output.append(0)
-        print predicted_output   
+        print predicted_output
+        """
+        
     model.save("./SpeechRecognitionModel.h5")
