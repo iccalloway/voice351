@@ -16,7 +16,7 @@ from keras.utils.np_utils import to_categorical
 from functools import partial, update_wrapper
 from math import sqrt, pow
 from random import sample, randint, choice, shuffle
-from scklearn.metrics import confusion_matrix
+##from scklearn.metrics import confusion_matrix
 import keras.backend as K
 from collections import deque
 
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     for file in files:
         segdict, freqdict, tupledict  = get_important_info(trainpath, file[1], segdict, freqdict, tupledict)
      
-    balance_number = 30
+    balance_number = 80
     
     """
     ###If we can only load one file at a time...
@@ -198,33 +198,35 @@ if __name__ == "__main__":
     
     save_dict(segdict, segment_dict)
     save_dict(freqdict, freq_dict)
-      
+  
     ##Initialize Model
     model = Sequential()
     
     
     ## With RNN
-    """
+    
     model.add(Bidirectional(LSTM(output_dim=len(segdict), init='uniform', \
      inner_init='uniform',forget_bias_init='one', return_sequences=True, activation='tanh', \
      inner_activation='sigmoid',), merge_mode='sum', input_shape = (batch_size,coefficients)))
-    model.add(Dropout(0.3))
+    model.add(Dropout(0.1))
     model.add(TimeDistributed(Dense(len(segdict), activation='sigmoid')))
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.5))
+    model.add(TimeDistributed(Dense(len(segdict), activation='sigmoid')))
+    model.add(Dropout(0.5))
     model.add(TimeDistributed(Dense(len(segdict), activation='sigmoid')))
     model.add(Activation('softmax'))
-    """
+
     
-    
+    """   
     ##With plain NN
-    model.add(Dense(output_dim=len(segdict), input_shape = (batch_size, coeffcients))
+    model.add(Dense(output_dim=len(segdict), input_shape = (batch_size, coefficients)))
     model.add(Dropout(0.3))
-    model.add(Dense(len(segdict))
+    model.add(Dense(len(segdict)))
     model.add(Dropout(0.2))
-    model.add(Dense(len(segidct))
+    model.add(Dense(len(segidct)))
     model.add(Activation('softmax'))
-              
-    
+    """             
+
     rms = RMSprop()
     
     model.compile(loss="categorical_crossentropy",
@@ -234,11 +236,11 @@ if __name__ == "__main__":
         
     ##model = load_model(modelpath)
     model.summary()
-    
+
     transcription_list = []
     fft_list = []
     
-    bucket_list  = [[] for a in len(segdict)]
+    bucket_list  = [[] for a in range(len(segdict))]
 
     ##          
     for file in files:
@@ -247,22 +249,18 @@ if __name__ == "__main__":
         slices = [features[a*tuple_size:(a+1)*(tuple_size)] for a in range(len(features)/tuple_size)]
         for slice in slices:
             bucket_list[slice[-1][-1]].append(slice)
-    index = deque(range(len(transcription_list)))
 
     ##Train Model
     for a in range(20):     
-        index.rotate(-1)
-        selected_sices = []
+        selected_slices = []
         for b in range(len(segdict)):
-            selected_slices = selected_slices.append([choice(bucket_list[b]) for c in range(balance_number)])
-        
+            if len(bucket_list[b])>0:
+                selected_slices.append([choice(bucket_list[b]) for c in range(balance_number)])
         shuffle(selected_slices)
 
         model_input = []
         for bucket in selected_slices:
-            model_input= model_input+[val for sublist in bucket for val in sublist] 
-            
-        
+            model_input= model_input+[val for sublist in bucket for val in sublist]
         X_train = array([array(item[0]) for item in model_input])
         X_train = array(array([X_train[x:x+batch_size] for x in range(0, len(X_train), batch_size)]))
         X_train = sequence.pad_sequences(X_train, maxlen=batch_size)
@@ -273,16 +271,14 @@ if __name__ == "__main__":
         Y_train = array([Y_train_values[x:x+batch_size] for x in range(0, len(Y_train_values), batch_size)])
         Y_train = sequence.pad_sequences(Y_train, maxlen=batch_size)
         
-        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=20, validation_split=0.2, verbose=1)
-        
-              
-        current_matrix = confusion_matrix(Y)     
-              
+        hist = model.fit(X_train, Y_train, batch_size=1, nb_epoch=20, validation_split=0.2, verbose=1)              
         
         ##Generate Confusion Matrix at end of each training step
         predictions = model.predict(X_train, batch_size=1)
-        cmatrix = confusion_matrix(predictions, Y_train)
-        """     
+        ##cmatrix = confusion_matrix(predictions, Y_train)
+        
+        
+        ##Predict Output    
         sorted_dict = sorted(segdict.items(), key=lambda x:x[1])
         predicted_output=[]
         for item in predictions:
@@ -294,6 +290,6 @@ if __name__ == "__main__":
                 else:
                     predicted_output.append(0)
         print predicted_output
-        """
+        
         
     model.save("./SpeechRecognitionModel.h5")
